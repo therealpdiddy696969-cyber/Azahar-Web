@@ -50,10 +50,10 @@ function guessFileName(url, fallback) {
   }
 }
 
-function forceEmbedMode(html) {
+function setEmbedMode(html, embedUi) {
   const embedCheck = 'new URLSearchParams(window.location.search).get("embed") === "1"';
   if (html.includes(embedCheck)) {
-    return html.replace(embedCheck, "true");
+    return html.replace(embedCheck, embedUi ? "true" : "false");
   }
   return html;
 }
@@ -84,10 +84,10 @@ function patchFrontendScript(scriptContent) {
   );
 }
 
-async function prepareFrontendHtml(html, frontendHtmlUrl, fetchInit) {
+async function prepareFrontendHtml(html, frontendHtmlUrl, fetchInit, embedUi) {
   const frontendBaseUrl = ensureTrailingSlash(deriveFrontendBaseUrl(frontendHtmlUrl));
   const frontendAppUrl = new URL(DEFAULT_FRONTEND_APP_FILE, frontendBaseUrl).href;
-  let prepared = forceEmbedMode(html);
+  let prepared = setEmbedMode(html, embedUi);
   const headMarkup =
     `<base href="${frontendBaseUrl}">\n` +
     `<script>window.__AZAHAR_SRC_DOC__ = true; window.__AZAHAR_FRONTEND_BASE_URL__ = ${JSON.stringify(frontendBaseUrl)};<\/script>`;
@@ -101,6 +101,7 @@ class AzaharWebPlayer {
     this.options = {
       target: document.body,
       frontendHtmlUrl: DEFAULT_FRONTEND_HTML_URL,
+      embedUi: true,
       autoLoadCore: true,
       width: "100%",
       height: "100%",
@@ -124,6 +125,7 @@ class AzaharWebPlayer {
           html,
           this.options.frontendHtmlUrl,
           this.options.frontendFetchInit,
+          this.options.embedUi,
         ),
       );
     }
