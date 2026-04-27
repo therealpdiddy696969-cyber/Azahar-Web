@@ -1,3 +1,6 @@
+const DEFAULT_FRONTEND_HTML_URL =
+  "https://cdn.jsdelivr.net/gh/SomeRandomFella/Azahar-Web/index.html";
+
 function resolveElement(target) {
   if (!target) {
     return document.body;
@@ -5,7 +8,7 @@ function resolveElement(target) {
   if (typeof target === "string") {
     const element = document.querySelector(target);
     if (!element) {
-      throw new Error(`Could not find mount target: ${target}`);
+      throw new Error(`could not find mount target: ${target}`);
     }
     return element;
   }
@@ -16,22 +19,24 @@ function ensureTrailingSlash(text) {
   return text.endsWith("/") ? text : `${text}/`;
 }
 
-function buildFrontendUrl(frontendUrl, renderer, hwShaders) {
-  const url = new URL(ensureTrailingSlash(frontendUrl), window.location.href);
-  url.searchParams.set("embed", "1");
-  if (renderer === "software") {
-    url.searchParams.set("renderer", "software");
-  } else if (renderer === "webgl-full") {
-    url.searchParams.set("renderer", "webgl-full");
-  } else {
-    url.searchParams.set("renderer", "webgl");
-    if (hwShaders) {
-      url.searchParams.set("hwshaders", "on");
-    } else {
-      url.searchParams.delete("hwshaders");
-    }
+function deriveFrontendBaseUrl(frontendHtmlUrl) {
+  return new URL(".", frontendHtmlUrl).href;
+}
+
+async function fetchText(url, fetchInit) {
+  const response = await fetch(url, fetchInit);
+  if (!response.ok) {
+    throw new Error(`no fetch ${url}: ${response.status} ${response.statusText}`);
   }
-  return url.toString();
+  return response.text();
+}
+
+async function fetchBytes(url, fetchInit) {
+  const response = await fetch(url, fetchInit);
+  if (!response.ok) {
+    throw new Error(`no fetch ${url}: ${response.status} ${response.statusText}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 function guessFileName(url, fallback) {
@@ -44,30 +49,57 @@ function guessFileName(url, fallback) {
   }
 }
 
-async function fetchBytes(url, fetchInit) {
-  const response = await fetch(url, fetchInit);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
+function forceEmbedMode(html) {
+  const embedCheck = 'new URLSearchParams(window.location.search).get("embed") === "1"';
+  if (html.includes(embedCheck)) {
+    return html.replace(embedCheck, "true");
   }
-  return new Uint8Array(await response.arrayBuffer());
+  return html;
+}
+
+function injectHeadMarkup(html, markup) {
+  if (/<head[^>]*>/i.test(html)) {
+    return html.replace(/<head([^>]*)>/i, `<head$1>\n${markup}`);
+  }
+  return `${markup}\n${html}`;
+}
+
+function prepareFrontendHtml(html, frontendHtmlUrl) {
+  const frontendBaseUrl = ensureTrailingSlash(deriveFrontendBaseUrl(frontendHtmlUrl));
+  let prepared = forceEmbedMode(html);
+  const headMarkup =
+    `<base href="${frontendBaseUrl}">\n` +
+    `<script>window.__AZAHAR_SRC_DOC__ = true;<\/script>`;
+  prepared = injectHeadMarkup(prepared, headMarkup);
+  return prepared;
 }
 
 class AzaharWebPlayer {
   constructor(options = {}) {
     this.options = {
       target: document.body,
-      frontendUrl: "./",
-      renderer: "webgl",
-      hwShaders: false,
+      frontendHtmlUrl: DEFAULT_FRONTEND_HTML_URL,
       autoLoadCore: true,
       width: "100%",
       height: "100%",
+      iframeTitle: "Azahar Web",
       ...options,
     };
     this.mount = resolveElement(this.options.target);
     this.iframe = null;
     this.app = null;
     this.ready = null;
+    this.frontendHtmlPromise = null;
+  }
+
+  async fetchFrontendHtml() {
+    if (!this.frontendHtmlPromise) {
+      this.frontendHtmlPromise = fetchText(
+        this.options.frontendHtmlUrl,
+        this.options.frontendFetchInit,
+      ).then((html) => prepareFrontendHtml(html, this.options.frontendHtmlUrl));
+    }
+    return this.frontendHtmlPromise;
   }
 
   async init() {
@@ -76,27 +108,28 @@ class AzaharWebPlayer {
     }
 
     const iframe = document.createElement("iframe");
-    iframe.src = buildFrontendUrl(
-      this.options.frontendUrl,
-      this.options.renderer,
-      this.options.hwShaders,
-    );
     iframe.allow = "fullscreen";
     iframe.style.width = this.options.width;
     iframe.style.height = this.options.height;
     iframe.style.border = "0";
     iframe.style.display = "block";
     iframe.style.background = "#000";
+    iframe.title = this.options.iframeTitle;
     this.mount.replaceChildren(iframe);
     this.iframe = iframe;
 
     this.ready = (async () => {
+      const html = await this.fetchFrontendHtml();
       await new Promise((resolve, reject) => {
         iframe.addEventListener("load", resolve, { once: true });
-        iframe.addEventListener("error", () => reject(new Error("Failed to load Azahar frontend")), {
-          once: true,
-        });
+        iframe.addEventListener(
+          "error",
+          () => reject(new Error("Failed to load Azahar frontend srcdoc")),
+          { once: true },
+        );
+        iframe.srcdoc = html;
       });
+
       this.app = await this.waitForApp();
       if (this.options.autoLoadCore) {
         await this.app.loadCore();
