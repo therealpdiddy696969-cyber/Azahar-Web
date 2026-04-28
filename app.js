@@ -77,7 +77,7 @@ function loadClassicRuntimeScript(src) {
     return azaharRuntimeScriptPromise;
   }
 
-  const absoluteSrc = new URL(src, window.location.href).href;
+  const absoluteSrc = new URL(src, "https://cdn.jsdelivr.net/gh/SomeRandomFella/Azahar-Web@latest/").href;
   azaharRuntimeScriptPromise = new Promise((resolve, reject) => {
     const complete = () => resolve();
     const fail = () => reject(new Error(`Failed to load classic Azahar runtime script: ${absoluteSrc}`));
@@ -115,7 +115,7 @@ async function getCreateAzaharModule() {
     return window.createAzaharModule;
   }
   if (!createAzaharModuleFactoryPromise) {
-    const moduleUrl = new URL("./Build/azahar_libretro.js", window.location.href).href;
+    const moduleUrl = new URL("./Build/azahar_libretro.js", "https://cdn.jsdelivr.net/gh/SomeRandomFella/Azahar-Web@latest/").href;
     createAzaharModuleFactoryPromise = (async () => {
       const runtimeFormat = await detectAzaharRuntimeFormat(moduleUrl);
       if (runtimeFormat === "classic") {
@@ -1902,7 +1902,7 @@ async function loadCore() {
     onAbort: (reason) => {
       reportRuntimeFailure("Wasm abort", reason);
     },
-    locateFile: (path) => new URL(`./Build/${path}`, window.location.href).href,
+    locateFile: (path) => new URL(`./Build/${path}`, "https://cdn.jsdelivr.net/gh/SomeRandomFella/Azahar-Web@latest/").href,
   });
   ensureFsDirectory("/save");
   ensureFsDirectory("/system");
